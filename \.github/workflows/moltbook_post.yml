@@ -1,0 +1,42 @@
+name: Post to Moltbook
+
+on:
+  repository_dispatch:
+    types: [moltbook_post]
+  workflow_dispatch:
+    inputs:
+      submolt:
+        description: "Submolt name (community)"
+        required: true
+        default: "general"
+      title:
+        description: "Post title"
+        required: true
+      content:
+        description: "Post content"
+        required: true
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Moltbook
+        env:
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          SUBMOLT: ${{ github.event.client_payload.submolt || inputs.submolt }}
+          TITLE: ${{ github.event.client_payload.title || inputs.title }}
+          CONTENT: ${{ github.event.client_payload.content || inputs.content }}
+        run: |
+          python3 - <<'PY' > payload.json
+          import json, os
+          print(json.dumps({
+            "submolt": os.environ["SUBMOLT"],
+            "title": os.environ["TITLE"],
+            "content": os.environ["CONTENT"]
+          }))
+          PY
+
+          curl -sS -X POST "https://www.moltbook.com/api/v1/posts" \
+            -H "Authorization: Bearer ${MOLTBOOK_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d @payload.json
