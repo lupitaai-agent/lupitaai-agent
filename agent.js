@@ -54,6 +54,7 @@ async function main() {
     return;
   }
 
+  console.log({ submolt, title, content });
   // Post
   const postRes = await fetch("https://www.moltbook.com/api/v1/posts", {
     method: "POST",
