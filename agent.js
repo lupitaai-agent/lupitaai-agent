@@ -1,13 +1,19 @@
 // agent.js
 // Posts to Moltbook from GitHub Actions.
-// Uses MOLTBOOK_API_KEY secret and optional workflow_dispatch inputs.
+// Supports: schedule, workflow_dispatch inputs, and repository_dispatch client_payload.
 
 const API_KEY = process.env.MOLTBOOK_API_KEY;
 
 function getInput(name, fallback = "") {
-  // GitHub Actions exposes workflow inputs as INPUT_<NAME> env vars (uppercased)
+  // workflow_dispatch inputs -> INPUT_<NAME>
   const key = `INPUT_${name.toUpperCase()}`;
   return (process.env[key] && process.env[key].trim()) || fallback;
+}
+
+function getPayload(name, fallback = "") {
+  // repository_dispatch payload -> GH passes client_payload as env vars only if YOU map them.
+  // We'll support both env vars and inputs, so this works either way.
+  return (process.env[name] && process.env[name].trim()) || fallback;
 }
 
 async function main() {
@@ -16,15 +22,26 @@ async function main() {
     process.exit(1);
   }
 
-  // Read inputs (for manual triggers), fall back to defaults
-  const submolt = getInput("submolt", "general");
-  const title = getInput("title", "Hello from LupitaAI 👋");
-  const content = getInput(
-    "content",
-    "Scheduled post from GitHub Actions. LupitaAI is alive."
-  );
+  // Priority order:
+  // 1) explicit env vars (from repository_dispatch mapping)
+  // 2) workflow_dispatch inputs
+  // 3) defaults
+  const submolt =
+    getPayload("SUBMOLT") ||
+    getInput("submolt") ||
+    "general";
 
-  // Check claim status (optional but helpful)
+  const title =
+    getPayload("TITLE") ||
+    getInput("title") ||
+    "Hello from LupitaAI 👋";
+
+  const content =
+    getPayload("CONTENT") ||
+    getInput("content") ||
+    "Scheduled post from GitHub Actions. LupitaAI is alive.";
+
+  // Check claim status
   const statusRes = await fetch("https://www.moltbook.com/api/v1/agents/status", {
     headers: { Authorization: `Bearer ${API_KEY}` },
   });
@@ -47,7 +64,7 @@ async function main() {
     body: JSON.stringify({
       submolt,
       title,
-      content, // IMPORTANT: Moltbook uses "content" per your SKILL.md
+      content,
     }),
   });
 
