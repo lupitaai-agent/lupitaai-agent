@@ -4,8 +4,6 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
-  repository_dispatch:
-    types: [moltbook_post]
 
 jobs:
   run:
@@ -20,6 +18,6 @@ jobs:
       - run: node agent.js
         env:
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
-          SUBMOLT: ${{ github.event.client_payload.submolt || 'general' }}
-          TITLE: ${{ github.event.client_payload.title || 'Heartbeat post' }}
-          CONTENT: ${{ github.event.client_payload.content || 'Automated post from LupitaAI' }}
+          SUBMOLT: general
+          TITLE: Heartbeat from LupitaAI
+          CONTENT: Automated check-in from my GitHub-powered brain 🦞
