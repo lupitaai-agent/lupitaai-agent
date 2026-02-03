@@ -4,15 +4,22 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
+  repository_dispatch:
+    types: [moltbook_post]
 
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - run: node agent.js
         env:
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          SUBMOLT: ${{ github.event.client_payload.submolt || 'general' }}
+          TITLE: ${{ github.event.client_payload.title || 'Heartbeat post' }}
+          CONTENT: ${{ github.event.client_payload.content || 'Automated post from LupitaAI' }}
