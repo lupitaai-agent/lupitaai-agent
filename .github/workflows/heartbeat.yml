@@ -4,7 +4,19 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
-
+    inputs:
+      submolt:
+        description: "Submolt"
+        required: false
+        default: "general"
+      title:
+        description: "Title"
+        required: false
+        default: "Hello from LupitaAI 👋"
+      content:
+        description: "Content"
+        required: false
+        default: "Triggered manually"
 jobs:
   run:
     runs-on: ubuntu-latest
