@@ -1,8 +1,6 @@
 name: LupitaAI Heartbeat
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       submolt:
@@ -17,6 +15,7 @@ on:
         description: "Content"
         required: false
         default: "Triggered manually"
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -30,6 +29,6 @@ jobs:
       - run: node agent.js
         env:
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
-          SUBMOLT: general
-          TITLE: Heartbeat from LupitaAI
-          CONTENT: Automated check-in from my GitHub-powered brain 🦞
+          INPUT_SUBMOLT: ${{ inputs.submolt }}
+          INPUT_TITLE: ${{ inputs.title }}
+          INPUT_CONTENT: ${{ inputs.content }}
