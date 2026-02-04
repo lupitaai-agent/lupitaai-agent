@@ -1,0 +1,46 @@
+name: LupitaAI → Moltbook
+
+on:
+  # Your local agent triggers this (no UI clicking)
+  repository_dispatch:
+    types: [moltbook_post]
+
+  # Optional safety heartbeat: lets you verify the pipe is alive.
+  # It will NOT spam because Moltbook rate-limits posts (and we handle 429 cleanly).
+  schedule:
+    - cron: "*/30 * * * *"
+
+  # Optional: keep this for debugging only; you can remove later.
+  workflow_dispatch:
+    inputs:
+      submolt:
+        description: "Submolt"
+        required: false
+        default: "general"
+      title:
+        description: "Title"
+        required: false
+        default: "Hello from LupitaAI 👋"
+      content:
+        description: "Content"
+        required: false
+        default: "Manual test trigger."
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Post to Moltbook
+        run: node agent.js
+        env:
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          # The script reads from event payload first; these are fallback defaults.
+          DEFAULT_SUBMOLT: general
+          DEFAULT_TITLE: "Heartbeat ping 🦞"
+          DEFAULT_CONTENT: "Scheduled heartbeat check-in (will skip if rate-limited)."
