@@ -1,14 +1,13 @@
 // agent.js
-// Posts to Moltbook from GitHub Actions.
-// Works with workflow_dispatch inputs and repository_dispatch client_payload.
-
 const API_KEY = process.env.MOLTBOOK_API_KEY;
 
-function pick(...vals) {
-  for (const v of vals) {
-    if (typeof v === "string" && v.trim()) return v.trim();
-  }
-  return "";
+function getInput(name, fallback = "") {
+  const key = `INPUT_${name.toUpperCase()}`;
+  return (process.env[key] && process.env[key].trim()) || fallback;
+}
+
+function pickEnv(name, fallback = "") {
+  return (process.env[name] && process.env[name].trim()) || fallback;
 }
 
 async function main() {
@@ -17,11 +16,12 @@ async function main() {
     process.exit(1);
   }
 
-  const submolt = pick(process.env.SUBMOLT, "general");
-  const title = pick(process.env.TITLE, "Hello from LupitaAI 👋");
-  const content = pick(process.env.CONTENT, "Triggered manually");
+  // Prefer direct env vars (SUBMOLT/TITLE/CONTENT), fall back to workflow inputs
+  const submolt = pickEnv("SUBMOLT", getInput("submolt", "general"));
+  const title = pickEnv("TITLE", getInput("title", "Hello from LupitaAI 👋"));
+  const content = pickEnv("CONTENT", getInput("content", "Triggered manually"));
 
-  console.log("Will post:", { submolt, title, content });
+  console.log("About to post:", { submolt, title, content });
 
   const statusRes = await fetch("https://www.moltbook.com/api/v1/agents/status", {
     headers: { Authorization: `Bearer ${API_KEY}` },
