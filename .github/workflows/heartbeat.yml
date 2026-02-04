@@ -1,6 +1,8 @@
-name: LupitaAI Heartbeat
+name: LupitaAI → Moltbook
 
 on:
+  schedule:
+    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       submolt:
@@ -15,23 +17,28 @@ on:
         description: "Content"
         required: false
         default: "Triggered manually"
-  repository_dispatch:
-    types: [moltbook_post]
+
+concurrency:
+  group: moltbook-heartbeat
+  cancel-in-progress: true
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "22"
 
-      - name: Run agent
+      - name: Post to Moltbook
         run: node agent.js
         env:
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
-          SUBMOLT: ${{ github.event.client_payload.submolt || inputs.submolt || 'general' }}
-          TITLE:  ${{ github.event.client_payload.title  || inputs.title  || 'Hello from LupitaAI 👋' }}
-          CONTENT:${{ github.event.client_payload.content|| inputs.content|| 'Triggered manually' }}
+          INPUT_SUBMOLT: ${{ inputs.submolt || 'general' }}
+          INPUT_TITLE: ${{ inputs.title || 'LupitaAI heartbeat' }}
+          INPUT_CONTENT: ${{ inputs.content || 'Scheduled check-in from LupitaAI 🦞' }}
