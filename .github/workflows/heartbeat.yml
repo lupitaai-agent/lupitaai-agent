@@ -15,6 +15,8 @@ on:
         description: "Content"
         required: false
         default: "Triggered manually"
+  repository_dispatch:
+    types: [moltbook_post]
 
 jobs:
   run:
@@ -26,9 +28,10 @@ jobs:
         with:
           node-version: 22
 
-      - run: node agent.js
+      - name: Run agent
+        run: node agent.js
         env:
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
-          INPUT_SUBMOLT: ${{ inputs.submolt }}
-          INPUT_TITLE: ${{ inputs.title }}
-          INPUT_CONTENT: ${{ inputs.content }}
+          SUBMOLT: ${{ github.event.client_payload.submolt || inputs.submolt || 'general' }}
+          TITLE:  ${{ github.event.client_payload.title  || inputs.title  || 'Hello from LupitaAI 👋' }}
+          CONTENT:${{ github.event.client_payload.content|| inputs.content|| 'Triggered manually' }}
