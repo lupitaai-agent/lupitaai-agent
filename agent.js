@@ -1,13 +1,48 @@
 // agent.js
+// Robust Moltbook poster for GitHub Actions.
+// Priority of post content:
+// 1) repository_dispatch payload (github.event.client_payload)
+// 2) workflow_dispatch inputs (INPUT_* env vars)
+// 3) defaults from env (DEFAULT_*)
+
 const API_KEY = process.env.MOLTBOOK_API_KEY;
 
-function getInput(name, fallback = "") {
-  const key = `INPUT_${name.toUpperCase()}`;
-  return (process.env[key] && process.env[key].trim()) || fallback;
+function clean(s) {
+  return typeof s === "string" ? s.trim() : "";
 }
 
-function pickEnv(name, fallback = "") {
-  return (process.env[name] && process.env[name].trim()) || fallback;
+// GitHub exposes workflow_dispatch inputs as INPUT_<NAME>
+function getWorkflowInput(name) {
+  return clean(process.env[`INPUT_${name.toUpperCase()}`]);
+}
+
+// Defaults (set in workflow env)
+function getDefault(name) {
+  return clean(process.env[`DEFAULT_${name.toUpperCase()}`]);
+}
+
+// repository_dispatch payload is provided via the special env var GITHUB_EVENT_PATH (a JSON file)
+function readGitHubEvent() {
+  try {
+    const fs = require("fs");
+    const p = process.env.GITHUB_EVENT_PATH;
+    if (!p) return null;
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function httpJson(url, options = {}) {
+  const res = await fetch(url, options);
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { raw: text };
+  }
+  return { res, json };
 }
 
 async function main() {
@@ -16,37 +51,75 @@ async function main() {
     process.exit(1);
   }
 
-  // Prefer direct env vars (SUBMOLT/TITLE/CONTENT), fall back to workflow inputs
-  const submolt = pickEnv("SUBMOLT", getInput("submolt", "general"));
-  const title = pickEnv("TITLE", getInput("title", "Hello from LupitaAI 👋"));
-  const content = pickEnv("CONTENT", getInput("content", "Triggered manually"));
+  const evt = readGitHubEvent();
+  const payload = evt?.client_payload || {};
 
-  console.log("About to post:", { submolt, title, content });
+  const submolt =
+    clean(payload.submolt) ||
+    getWorkflowInput("submolt") ||
+    getDefault("submolt") ||
+    "general";
 
-  const statusRes = await fetch("https://www.moltbook.com/api/v1/agents/status", {
-    headers: { Authorization: `Bearer ${API_KEY}` },
-  });
-  const status = await statusRes.json();
-  console.log("Agent status:", status);
+  const title =
+    clean(payload.title) ||
+    getWorkflowInput("title") ||
+    getDefault("title") ||
+    "Hello from LupitaAI 👋";
 
-  if (status.status !== "claimed") {
-    console.log("Not claimed yet — skipping post.");
+  const content =
+    clean(payload.content) ||
+    getWorkflowInput("content") ||
+    getDefault("content") ||
+    "Automated post from GitHub Actions.";
+
+  // Log what we're about to do (helps debugging without leaking secrets)
+  console.log("Prepared post:", { submolt, title, content_len: content.length });
+
+  // Check claim status (hard gate)
+  const { res: stRes, json: stJson } = await httpJson(
+    "https://www.moltbook.com/api/v1/agents/status",
+    { headers: { Authorization: `Bearer ${API_KEY}` } }
+  );
+
+  console.log("Agent status:", stJson);
+
+  if (!stRes.ok) {
+    console.error("Status check failed.");
+    process.exit(1);
+  }
+
+  if (stJson.status !== "claimed") {
+    console.log("Agent not claimed — skipping post.");
     return;
   }
 
-  const postRes = await fetch("https://www.moltbook.com/api/v1/posts", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ submolt, title, content }),
-  });
+  // Post to Moltbook (NOTE: per SKILL.md the field is `content`)
+  const { res: postRes, json: postJson } = await httpJson(
+    "https://www.moltbook.com/api/v1/posts",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ submolt, title, content }),
+    }
+  );
 
-  const postOut = await postRes.json();
-  console.log("Post response:", postOut);
+  console.log("Post response:", postJson);
 
-  if (!postRes.ok) process.exit(1);
+  // If Moltbook rate-limits (cooldown), treat as success so Actions stays green.
+  if (postRes.status === 429) {
+    console.log("Rate-limited by Moltbook cooldown — treating as OK.");
+    return;
+  }
+
+  if (!postRes.ok) {
+    console.error("Post failed.");
+    process.exit(1);
+  }
+
+  console.log("Posted successfully.");
 }
 
 main().catch((err) => {
