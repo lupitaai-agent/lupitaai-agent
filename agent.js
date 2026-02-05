@@ -1,6 +1,10 @@
 // agent.js
 // Posts to Moltbook from GitHub Actions.
-// Priority: repository_dispatch client_payload → INPUT_* (workflow_dispatch) → DEFAULT_* (schedule fallback)
+// Priority: repository_dispatch client_payload (GITHUB_EVENT_PATH)
+//        → INPUT_* (workflow_dispatch)
+//        → SUBMOLT/TITLE/CONTENT (manual env)
+//        → DEFAULT_* (schedule fallback)
+//        → hard defaults
 
 const API_KEY = process.env.MOLTBOOK_API_KEY;
 
@@ -11,15 +15,16 @@ function pick(...vals) {
   return "";
 }
 
-function readGithubDispatchPayload() {
-  // GitHub writes the full event JSON to this path.
-  // For repository_dispatch: event.client_payload contains your fields.
-  const fs = require("fs");
+async function readGithubDispatchPayload() {
   const p = process.env.GITHUB_EVENT_PATH;
   if (!p) return {};
 
   try {
-    const evt = JSON.parse(fs.readFileSync(p, "utf8"));
+    // Works in both ESM and CommonJS
+    const { readFile } = await import("node:fs/promises");
+    const raw = await readFile(p, "utf8");
+    const evt = JSON.parse(raw);
+
     const cp = evt && typeof evt === "object" ? evt.client_payload : null;
     if (!cp || typeof cp !== "object") return {};
 
@@ -34,18 +39,24 @@ function readGithubDispatchPayload() {
   }
 }
 
+function safePreview(s, n = 140) {
+  if (typeof s !== "string") return "";
+  const oneLine = s.replace(/\s+/g, " ").trim();
+  return oneLine.length > n ? oneLine.slice(0, n) + "…" : oneLine;
+}
+
 async function main() {
   if (!API_KEY) {
     console.error("Missing MOLTBOOK_API_KEY (GitHub secret not set).");
     process.exit(1);
   }
 
-  const payload = readGithubDispatchPayload();
+  const payload = await readGithubDispatchPayload();
 
-  // Priority: dispatch payload → manual inputs → defaults
   const submolt = pick(
     payload.submolt,
     process.env.INPUT_SUBMOLT,
+    process.env.SUBMOLT,
     process.env.DEFAULT_SUBMOLT,
     "general"
   );
@@ -53,6 +64,7 @@ async function main() {
   const title = pick(
     payload.title,
     process.env.INPUT_TITLE,
+    process.env.TITLE,
     process.env.DEFAULT_TITLE,
     "Hello from LupitaAI 👋"
   );
@@ -60,15 +72,25 @@ async function main() {
   const content = pick(
     payload.content,
     process.env.INPUT_CONTENT,
+    process.env.CONTENT,
     process.env.DEFAULT_CONTENT,
     "Automated post from LupitaAI."
   );
 
+  const trigger =
+    payload.title || payload.content || payload.submolt
+      ? "repository_dispatch"
+      : process.env.INPUT_TITLE || process.env.INPUT_CONTENT || process.env.INPUT_SUBMOLT
+      ? "workflow_dispatch"
+      : process.env.TITLE || process.env.CONTENT || process.env.SUBMOLT
+      ? "env"
+      : "schedule/default";
+
   console.log("Posting with:", {
+    trigger,
     submolt,
-    title,
-    contentPreview: content.slice(0, 120),
-    trigger: pick(payload.title ? "repository_dispatch" : "", process.env.INPUT_TITLE ? "workflow_dispatch" : "", "schedule/default"),
+    title: safePreview(title, 80),
+    contentPreview: safePreview(content, 140),
   });
 
   // Check claim status (optional but helpful)
@@ -76,7 +98,7 @@ async function main() {
     headers: { Authorization: `Bearer ${API_KEY}` },
   });
 
-  const status = await statusRes.json();
+  const status = await statusRes.json().catch(() => ({}));
   console.log("Agent status:", status);
 
   if (status.status !== "claimed") {
@@ -84,7 +106,6 @@ async function main() {
     return;
   }
 
-  // Post to Moltbook (note: field is "content" per Moltbook SKILL.md)
   const postRes = await fetch("https://www.moltbook.com/api/v1/posts", {
     method: "POST",
     headers: {
@@ -94,7 +115,7 @@ async function main() {
     body: JSON.stringify({ submolt, title, content }),
   });
 
-  const postOut = await postRes.json();
+  const postOut = await postRes.json().catch(() => ({}));
   console.log("Post response:", postOut);
 
   // If rate-limited, treat as success so workflow stays green.
