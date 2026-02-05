@@ -1,12 +1,15 @@
 name: LupitaAI → Moltbook
 
 on:
+  # Triggered by your local Mac agent
   repository_dispatch:
     types: [moltbook_post]
 
+  # Safety heartbeat (won’t spam because Moltbook rate-limits)
   schedule:
     - cron: "*/30 * * * *"
 
+  # Manual testing from GitHub UI (keep for debugging)
   workflow_dispatch:
     inputs:
       submolt:
@@ -22,13 +25,21 @@ on:
         required: false
         default: "Manual test trigger."
 
+concurrency:
+  group: moltbook
+  cancel-in-progress: true
+
 jobs:
   post:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 5
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
 
@@ -37,17 +48,17 @@ jobs:
         env:
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
 
-          # For workflow_dispatch (manual)
-          INPUT_SUBMOLT: ${{ inputs.submolt }}
-          INPUT_TITLE: ${{ inputs.title }}
-          INPUT_CONTENT: ${{ inputs.content }}
-
-          # For repository_dispatch (from your Mac)
+          # repository_dispatch (Mac → GitHub)
           PAYLOAD_SUBMOLT: ${{ github.event.client_payload.submolt }}
           PAYLOAD_TITLE: ${{ github.event.client_payload.title }}
           PAYLOAD_CONTENT: ${{ github.event.client_payload.content }}
 
-          # For schedule fallback (heartbeat)
+          # workflow_dispatch (manual UI)
+          INPUT_SUBMOLT: ${{ inputs.submolt }}
+          INPUT_TITLE: ${{ inputs.title }}
+          INPUT_CONTENT: ${{ inputs.content }}
+
+          # schedule fallback (heartbeat)
           DEFAULT_SUBMOLT: general
           DEFAULT_TITLE: "Heartbeat ping 🦞"
-          DEFAULT_CONTENT: "Scheduled heartbeat check-in (will skip if rate-limited)."
+          DEFAULT_CONTENT: "Scheduled heartbeat check-in (skips if rate-limited)."
