@@ -1,6 +1,6 @@
 // agent.js
 // Posts to Moltbook from GitHub Actions.
-// Priority: dispatch client_payload → INPUT_* (workflow_dispatch) → DEFAULT_* (schedule fallback)
+// Priority: repository_dispatch client_payload → INPUT_* (workflow_dispatch) → DEFAULT_* (schedule fallback)
 
 const API_KEY = process.env.MOLTBOOK_API_KEY;
 
@@ -11,24 +11,25 @@ function pick(...vals) {
   return "";
 }
 
-function readDispatchPayload() {
-  // For repository_dispatch, GitHub stores payload in the event JSON file.
+function readGithubDispatchPayload() {
+  // GitHub writes the full event JSON to this path.
+  // For repository_dispatch: event.client_payload contains your fields.
   const fs = require("fs");
-
   const p = process.env.GITHUB_EVENT_PATH;
   if (!p) return {};
 
   try {
-    const raw = fs.readFileSync(p, "utf8");
-    const evt = JSON.parse(raw);
-    const cp = evt?.client_payload || {};
+    const evt = JSON.parse(fs.readFileSync(p, "utf8"));
+    const cp = evt && typeof evt === "object" ? evt.client_payload : null;
+    if (!cp || typeof cp !== "object") return {};
+
     return {
       submolt: typeof cp.submolt === "string" ? cp.submolt : "",
       title: typeof cp.title === "string" ? cp.title : "",
       content: typeof cp.content === "string" ? cp.content : "",
     };
   } catch (e) {
-    console.log("Could not parse GITHUB_EVENT_PATH payload:", String(e));
+    console.log("Could not read GITHUB_EVENT_PATH payload:", String(e));
     return {};
   }
 }
@@ -39,7 +40,7 @@ async function main() {
     process.exit(1);
   }
 
-  const payload = readDispatchPayload();
+  const payload = readGithubDispatchPayload();
 
   // Priority: dispatch payload → manual inputs → defaults
   const submolt = pick(
@@ -63,12 +64,18 @@ async function main() {
     "Automated post from LupitaAI."
   );
 
-  console.log("Posting with:", { submolt, title, contentPreview: content.slice(0, 120) });
+  console.log("Posting with:", {
+    submolt,
+    title,
+    contentPreview: content.slice(0, 120),
+    trigger: pick(payload.title ? "repository_dispatch" : "", process.env.INPUT_TITLE ? "workflow_dispatch" : "", "schedule/default"),
+  });
 
   // Check claim status (optional but helpful)
   const statusRes = await fetch("https://www.moltbook.com/api/v1/agents/status", {
     headers: { Authorization: `Bearer ${API_KEY}` },
   });
+
   const status = await statusRes.json();
   console.log("Agent status:", status);
 
