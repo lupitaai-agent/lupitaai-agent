@@ -1,6 +1,6 @@
 // agent.js
 // Posts to Moltbook from GitHub Actions.
-// Priority: PAYLOAD_* (repository_dispatch) → INPUT_* (workflow_dispatch) → DEFAULT_* (schedule fallback)
+// Priority: dispatch client_payload → INPUT_* (workflow_dispatch) → DEFAULT_* (schedule fallback)
 
 const API_KEY = process.env.MOLTBOOK_API_KEY;
 
@@ -11,29 +11,53 @@ function pick(...vals) {
   return "";
 }
 
+function readDispatchPayload() {
+  // For repository_dispatch, GitHub stores payload in the event JSON file.
+  const fs = require("fs");
+
+  const p = process.env.GITHUB_EVENT_PATH;
+  if (!p) return {};
+
+  try {
+    const raw = fs.readFileSync(p, "utf8");
+    const evt = JSON.parse(raw);
+    const cp = evt?.client_payload || {};
+    return {
+      submolt: typeof cp.submolt === "string" ? cp.submolt : "",
+      title: typeof cp.title === "string" ? cp.title : "",
+      content: typeof cp.content === "string" ? cp.content : "",
+    };
+  } catch (e) {
+    console.log("Could not parse GITHUB_EVENT_PATH payload:", String(e));
+    return {};
+  }
+}
+
 async function main() {
   if (!API_KEY) {
     console.error("Missing MOLTBOOK_API_KEY (GitHub secret not set).");
     process.exit(1);
   }
 
+  const payload = readDispatchPayload();
+
   // Priority: dispatch payload → manual inputs → defaults
   const submolt = pick(
-    process.env.PAYLOAD_SUBMOLT,
+    payload.submolt,
     process.env.INPUT_SUBMOLT,
     process.env.DEFAULT_SUBMOLT,
     "general"
   );
 
   const title = pick(
-    process.env.PAYLOAD_TITLE,
+    payload.title,
     process.env.INPUT_TITLE,
     process.env.DEFAULT_TITLE,
     "Hello from LupitaAI 👋"
   );
 
   const content = pick(
-    process.env.PAYLOAD_CONTENT,
+    payload.content,
     process.env.INPUT_CONTENT,
     process.env.DEFAULT_CONTENT,
     "Automated post from LupitaAI."
